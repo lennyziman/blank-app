@@ -298,10 +298,36 @@ with col1:
         height=canvas_h,
         width=canvas_w,
         drawing_mode=drawing_mode,
-        canvas_key = f"canvas_{uploaded.name}_{canvas_w}x{canvas_h}" if uploaded else "canvas_blank"
-...
-key=canvas_key,
+        key="canvas",
     )
+if uploaded:
+    img = Image.open(uploaded).convert("RGB")
+else:
+    img = None
+
+# determine canvas size
+canvas_w, canvas_h = 900, 550
+background = img
+
+# ✅ CREATE KEY HERE (standalone line)
+canvas_key = (
+    f"canvas_{uploaded.name}_{canvas_w}x{canvas_h}"
+    if uploaded
+    else "canvas_blank"
+)
+
+# ✅ THEN create canvas
+canvas = st_canvas(
+    fill_color="rgba(0, 0, 0, 0)",
+    stroke_width=stroke_width,
+    stroke_color="#000000",
+    background_image=background,
+    update_streamlit=True,
+    height=canvas_h,
+    width=canvas_w,
+    drawing_mode=drawing_mode,
+    key=canvas_key,
+)
 
 with col2:
     st.subheader("C) Generate layout")
