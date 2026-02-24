@@ -380,7 +380,7 @@ with col2:
             "stalls": [list(map(list, s.exterior.coords)) for s in best_stalls],
         }
         st.download_button(
-            "Download stalls as JSON
+            "Download stalls as JSON"
             "Download stalls as JSON",
             data=json.dumps(export, indent=2),
             file_name="parking_layout.json",
