@@ -264,41 +264,54 @@ col1, col2 = st.columns([1.0, 1.0], gap="large")
 
 with col1:
     st.subheader("A) Upload image (optional)")
-    uploaded = st.file_uploader("Upload a satellite image (PNG/JPG)", type=["png", "jpg", "jpeg"])
-    img = Image.open(uploaded).convert("RGB") if uploaded else None
 
-    if img is None:
-        st.info("No image uploaded. A blank canvas will be used.")
-        canvas_w, canvas_h = 900, 550
-        background = None
-    else:
+    def _on_upload_change():
+        up = st.session_state.get("uploader")
+        if up is None:
+            st.session_state["bg_img"] = None
+            st.session_state["bg_name"] = None
+            return
+        img_local = Image.open(up).convert("RGB")
         # Downscale large images for UI responsiveness
         max_w = 1100
-        scale = min(1.0, max_w / img.width)
+        scale = min(1.0, max_w / img_local.width)
         if scale < 1.0:
-            img = img.resize((int(img.width * scale), int(img.height * scale)))
-        canvas_w, canvas_h = img.width, img.height
-        background = img
+            img_local = img_local.resize((int(img_local.width * scale), int(img_local.height * scale)))
+        st.session_state["bg_img"] = img_local
+        st.session_state["bg_name"] = up.name
 
-    st.subheader("B) Draw boundary + obstacles (rectangles) and calibration line")
-    st.caption(
-        "Draw: (1) ONE boundary rectangle (the lot), (2) optional obstacle rectangles, (3) ONE calibration line.\n"
-        "MVP limitation: rectangles only (no arbitrary polygons yet)."
+    uploaded = st.file_uploader(
+        "Upload a satellite image (PNG/JPG)",
+        type=["png", "jpg", "jpeg"],
+        key="uploader",
+        on_change=_on_upload_change,
     )
 
+    background = st.session_state.get("bg_img", None)
+
+    if background is None:
+        st.info("No image uploaded. A blank canvas will be used.")
+        canvas_w, canvas_h = 900, 550
+        canvas_key = "canvas_blank"
+    else:
+        canvas_w, canvas_h = background.width, background.height
+        # Key MUST change when a new image is uploaded, otherwise canvas stays stale
+        canvas_key = f"canvas_{st.session_state.get('bg_name')}_{canvas_w}x{canvas_h}"
+
+    st.subheader("B) Draw boundary + obstacles (rectangles) and calibration line")
     drawing_mode = st.radio("Tool", ["rect", "line"], horizontal=True)
     stroke_width = 3 if drawing_mode == "rect" else 4
 
     canvas = st_canvas(
-        fill_color="rgba(0, 0, 0, 0)",  # transparent fill
+        fill_color="rgba(0, 0, 0, 0)",
         stroke_width=stroke_width,
         stroke_color="#000000",
-        background_image=background,
+        background_image=background,   # shows immediately while drawing
         update_streamlit=True,
         height=canvas_h,
         width=canvas_w,
         drawing_mode=drawing_mode,
-        key="canvas",
+        key=canvas_key,
     )
 if uploaded:
     img = Image.open(uploaded).convert("RGB")
