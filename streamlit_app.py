@@ -298,7 +298,9 @@ with col1:
         height=canvas_h,
         width=canvas_w,
         drawing_mode=drawing_mode,
-        key="canvas",
+        canvas_key = f"canvas_{uploaded.name}_{canvas_w}x{canvas_h}" if uploaded else "canvas_blank"
+...
+key=canvas_key,
     )
 
 with col2:
