@@ -1,13 +1,13 @@
 # streamlit_app.py
-# Streamlit parking layout generator (MVP):
-# - Upload satellite image (optional; used as background only)
-# - Draw ONE boundary rectangle + optional obstacle rectangles on a canvas
-# - Draw ONE calibration line and enter its real-world length (meters)
-# - Generates a best-of orientation sweep (90° stalls only) inside the buildable area
+# Parking Layout Generator (MVP)
+# - Upload satellite image (background)
+# - Draw ONE boundary rectangle + optional obstacle rectangles
+# - Draw ONE calibration line and input its real length (m)
+# - Generates best layout via orientation sweep (90° stalls only)
 #
-# requirements.txt should include:
+# requirements.txt (recommended):
 # streamlit==1.54.0
-# streamlit-drawable-canvas-fix==0.9.8  (recommended) OR your working canvas package
+# streamlit-drawable-canvas-fix==0.9.8
 # shapely==2.0.6
 # pillow
 # matplotlib
@@ -17,6 +17,7 @@ import json
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+import numpy as np
 import streamlit as st
 from PIL import Image
 
@@ -109,12 +110,10 @@ def generate_layout_90deg(
     stalls: List[Polygon] = []
 
     band_h = stall_l_px + aisle_w_px + stall_l_px
-
     y = miny
     while y + band_h <= maxy + 1e-6:
         row1_y0 = y
         row1_y1 = y + stall_l_px
-
         row2_y0 = y + stall_l_px + aisle_w_px
         row2_y1 = row2_y0 + stall_l_px
 
@@ -129,10 +128,10 @@ def generate_layout_90deg(
                 stalls.append(r2)
 
             x += stall_w_px
+
         y += band_h
 
-    stalls_back = [shp_rotate(s, -orientation_deg, origin=(cx, cy), use_radians=False) for s in stalls]
-    return stalls_back
+    return [shp_rotate(s, -orientation_deg, origin=(cx, cy), use_radians=False) for s in stalls]
 
 
 def best_layout_orientation_sweep(
@@ -142,8 +141,8 @@ def best_layout_orientation_sweep(
 ) -> Tuple[float, List[Polygon]]:
     best_angle = 0.0
     best_stalls: List[Polygon] = []
-
     step = max(1, int(params.angle_step_deg))
+
     for ang in range(0, 180, step):
         stalls = generate_layout_90deg(buildable_px, meters_per_px, params, orientation_deg=float(ang))
         if len(stalls) > len(best_stalls):
@@ -168,24 +167,21 @@ def render_result(
 
     if img is not None:
         ax.imshow(img)
-        h = img.height
-        w = img.width
+        h, w = img.height, img.width
         ax.set_xlim(0, w)
         ax.set_ylim(h, 0)
 
-    def draw_poly(p: Polygon, lw: float = 2.0):
+    def draw_poly(p: Polygon, lw: float):
         if p.is_empty:
             return
         x, y = p.exterior.xy
         ax.plot(x, y, linewidth=lw)
 
-    draw_poly(boundary, lw=3.0)
-
+    draw_poly(boundary, 3.0)
     for ob in obstacles:
-        draw_poly(ob, lw=2.0)
-
+        draw_poly(ob, 2.0)
     for s in stalls:
-        draw_poly(s, lw=1.0)
+        draw_poly(s, 1.0)
 
     ax.set_aspect("equal", adjustable="box")
     ax.axis("off")
@@ -198,6 +194,12 @@ def render_result(
 # -----------------------------
 st.set_page_config(page_title="Parking Layout Generator (MVP)", layout="wide")
 st.title("Parking Layout Generator (MVP) — Python + Streamlit")
+
+# Initialize state
+if "bg_img" not in st.session_state:
+    st.session_state["bg_img"] = None
+if "bg_name" not in st.session_state:
+    st.session_state["bg_name"] = None
 
 with st.sidebar:
     st.header("1) Parameters (meters)")
@@ -228,6 +230,7 @@ params = LayoutParams(
 
 col1, col2 = st.columns([1.0, 1.0], gap="large")
 
+
 # ---- Left: upload + draw ----
 with col1:
     st.subheader("A) Upload image (optional)")
@@ -239,7 +242,7 @@ with col1:
             st.session_state["bg_name"] = None
             return
 
-        img_local = Image.open(up).convert("RGB")
+        img_local = Image.open(up).convert("RGBA")
 
         max_w = 1100
         scale = min(1.0, max_w / img_local.width)
@@ -258,18 +261,20 @@ with col1:
         on_change=_on_upload_change,
     )
 
-    background = st.session_state.get("bg_img", None)
+    background_pil = st.session_state.get("bg_img", None)
 
-    if background is None:
+    if background_pil is None:
         st.info("No image uploaded. A blank canvas will be used.")
         canvas_w, canvas_h = 900, 550
         canvas_key = "canvas_blank"
+        background_for_canvas = None
     else:
-        canvas_w, canvas_h = background.width, background.height
+        canvas_w, canvas_h = background_pil.width, background_pil.height
         canvas_key = f"canvas_{st.session_state.get('bg_name')}_{canvas_w}x{canvas_h}"
+        # IMPORTANT: pass numpy array to the canvas background renderer
+        background_for_canvas = np.array(background_pil)
 
     st.subheader("B) Draw boundary + obstacles (rectangles) and calibration line")
-
     drawing_mode = st.radio("Tool", ["rect", "line"], horizontal=True)
     stroke_width = 3 if drawing_mode == "rect" else 4
 
@@ -277,13 +282,14 @@ with col1:
         fill_color="rgba(0, 0, 0, 0)",
         stroke_width=stroke_width,
         stroke_color="#000000",
-        background_image=background,
+        background_image=background_for_canvas,
         update_streamlit=True,
         height=canvas_h,
         width=canvas_w,
         drawing_mode=drawing_mode,
         key=canvas_key,
     )
+
 
 # ---- Right: generate ----
 with col2:
@@ -344,7 +350,7 @@ with col2:
         )
 
         fig = render_result(
-            img=background,
+            img=background_pil,
             boundary=boundary_px,
             obstacles=obstacles_px,
             stalls=best_stalls,
