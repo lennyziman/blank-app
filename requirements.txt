@@ -1,7 +1,6 @@
 streamlit==1.54.0
-streamlit-drawable-canvas==0.9.3
+streamlit-drawable-canvas-fix==0.9.8
 shapely==2.0.6
 pillow
 matplotlib
 numpy
-streamlit
